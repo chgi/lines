@@ -3,14 +3,62 @@
 
     const storageKey = "lines";
 
+    const keyMap = {
+
+        unmodified: {
+            "H": help,
+            "+": () => changeNumberOfPoints(+1),
+            "-": () => changeNumberOfPoints(-1),
+            "*": () => changeFadeSpeed(+0.01),
+            "/": () => changeFadeSpeed(-0.01),
+            "PageUp": () => changeSkipFrames(+1),
+            "PageDown": () => changeSkipFrames(-1),
+            "ArrowUp": () => changeVMin(+.2),
+            "ArrowDown": () => changeVMin(-.2),
+            "ArrowLeft": () => changeVMax(-.2),
+            "ArrowRight": () => changeVMax(+.2),
+            "S": saveSettings,
+            "L": loadSettings,
+            "D": loadDefaultSettings,
+            " ": togglePauseAnimation,
+            "1": () => loadSettings("1"),
+            "2": () => loadSettings("2"),
+            "3": () => loadSettings("3"),
+            "4": () => loadSettings("4"),
+            "5": () => loadSettings("5"),
+            "6": () => loadSettings("6"),
+            "7": () => loadSettings("7"),
+            "8": () => loadSettings("8"),
+            "9": () => loadSettings("9"),
+            "0": () => loadSettings("0"),
+        },
+
+        control: {
+            "1": () => saveSettings("1"),
+            "2": () => saveSettings("2"),
+            "3": () => saveSettings("3"),
+            "4": () => saveSettings("4"),
+            "5": () => saveSettings("5"),
+            "6": () => saveSettings("6"),
+            "7": () => saveSettings("7"),
+            "8": () => saveSettings("8"),
+            "9": () => saveSettings("9"),
+            "0": () => saveSettings("0"),
+        },
+
+        shift: {},
+        alt: {},
+        meta: {}
+    }
+
     const defaultSettings = {
         // animation speed settings
         skipFrames: 4,   // animate only ever (n+1)th frame
         stepSize: 1,     // scale factor for point speeds
         fadeSpeed: 0.05, // speed of fading (0..1)
         numPoints: 8,    // points to start with
-        vMin: 0.1,       // min speed
-        vMax: 3,        // max speed
+        vMin: 0.3,       // min speed
+        vMax: 3,         // max speed
         vChange: 0.2,    // speed change magnitude
 
         // colors
@@ -34,16 +82,13 @@
         skipCounter = 0,
         points = [],
         messages = [],
-        animation
-        ;
-
-    let settings;
+        animation,
+        settings;
 
     function loadDefaultSettings() {
         flashMessage("restoring default settings");
         settings = Object.assign({}, defaultSettings);
-        setSkipFrames(settings.skipFrames);
-        setFadeSpeed();
+        changeFadeSpeed();
     }
 
     function loadSettings(key = "default") {
@@ -51,29 +96,27 @@
         const s = localStorage.getItem(`${storageKey}_${key}`);
 
         if (!s) {
-            flashMessage("no saved settings");
+            flashMessage(`no saved settings in slot ${key}. press ctrl-${key} to save.`);
             return;
         }
 
-
-        flashMessage(`restoring settings from localStorage (${key})`);
+        flashMessage(`restoring settings from localStorage (slot ${key})`);
 
         settings = Object.assign({}, defaultSettings, JSON.parse(s));
         points = createPointsArray(settings.numPoints);
 
-        setSkipFrames(settings.skipFrames);
-        setFadeSpeed();
+        changeFadeSpeed();
     }
 
     function saveSettings(key = "default") {
         localStorage.setItem(`${storageKey}_${key}`, JSON.stringify(settings));
-        flashMessage(`saved settings to localStorage (${key})`);
+        flashMessage(`saved settings to localStorage (slot ${key})`);
     }
 
     function init() {
         updateCanvas();
-
         loadDefaultSettings();
+
         points = createPointsArray(settings.numPoints);
 
         window.addEventListener("resize", updateCanvas);
@@ -82,40 +125,14 @@
         animation = requestAnimationFrame(animationStep);
     }
 
-    function createPointsArray(numberOfPoints) {
-        const points = [];
-
-        for (let i = 0; i < numberOfPoints; ++i) {
-            points.push(createPoint());
-        }
-        points.push(points[0]);
-
-        return points;
-    }
-
     function updateCanvas() {
         w = canvas.width = canvas.clientWidth;
         h = canvas.height = canvas.clientHeight;
 
         ctx.fillStyle = "rgb(0,0,0)";
-        ctx.strokeStyle = "rgba(255,255,255,1)";
         ctx.fillRect(0, 0, w, h);
-    }
 
-    function setFadeSpeed(fs) {
-        const oldFs = settings.fadeSpeed,
-            newFs = clamp(fs || settings.fadeSpeed, 0.01, 1);
-        
-        settings.fadeSpeed = newFs;
-        ctx.fillStyle = `rgba(0,0,0,${newFs})`;
-        return newFs !== oldFs;
-    }
-
-    function setSkipFrames(sf) {
-        let oldSf = settings.skipFrames,
-            newSf = clamp(sf, 0, 10);
-        settings.skipFrames = newSf;
-        return newSf !== oldSf;
+        changeFadeSpeed();
     }
 
     function flashMessage(text, duration) {
@@ -137,131 +154,128 @@
         });
     }
 
-    function paintMessages() {
-        let { messageColor, messageFont } = settings;
+    function help() {
+        messages = [];
+        Object.keys(keyMap)
+            .forEach(mod => {
+                Object.keys(keyMap[mod]).forEach(key => flashMessage(`${(mod === 'unmodified' ? "" : mod + " + ").padStart(10)}${key}`, 200));
+            });
+    }
 
-        ctx.save();
+    function createPointsArray(numberOfPoints) {
+        const points = [];
 
-        ctx.fillStyle = messageColor;
-        ctx.font = messageFont;
+        for (let i = 0; i < numberOfPoints; ++i) {
+            points.push(createPoint());
+        }
+        points.push(points[0]);
 
-        messages = messages.filter(current => {
-            const { text, position, duration } = current;
+        return points;
+    }
 
-            if (duration > 0) {
-                ctx.fillText(text, position.x, position.y);
+    function changeFadeSpeed(deltaFadeSpeed = 0) {
+
+        if (!settings) return;
+
+        const oldFs = settings.fadeSpeed,
+            newFs = clamp(oldFs + deltaFadeSpeed, 0.01, 1);
+
+        settings.fadeSpeed = newFs;
+        ctx.fillStyle = `rgba(0,0,0,${newFs})`;
+
+        if (newFs !== oldFs) {
+            flashMessage(`${deltaFadeSpeed > 0 ? "increased" : "decreased"} fade speed to ${Math.round(settings.fadeSpeed * 1000) / 10}`);
+        }
+    }
+
+    function changeSkipFrames(deltaSkipFrames = 0) {
+        if (deltaSkipFrames === 0) return;
+
+        const oldSf = settings.skipFrames,
+            newSf = clamp(oldSf + deltaSkipFrames, 0, 10);
+
+        settings.skipFrames = newSf;
+
+        if (newSf !== oldSf) {
+            flashMessage(`${newSf > oldSf ? "increased" : "decreased"} skip frames to ${settings.skipFrames}`);
+        }
+    }
+
+    function changeNumberOfPoints(deltaNumPoints = 0) {
+
+        if (deltaNumPoints === 0) return;
+
+        const add = deltaNumPoints > 0,
+            msg = `${deltaNumPoints} ${deltaNumPoints > 1 ? "point" : "points"} ${add ? "added" : "removed"} (now ${settings.numPoints})`;
+
+        deltaNumPoints = Math.abs(clamp(settings.numPoints + deltaNumPoints, 2, 100) - settings.numPoints);
+
+        if (add) {
+            while (--deltaNumPoints >= 0) {
+                points.splice(points.length - 1, 0, createPoint());
+                ++settings.numPoints;
             }
+        } else {
+            points.splice(points.length - deltaNumPoints - 1, deltaNumPoints);
+            settings.numPoints -= deltaNumPoints;
+        }
+        flashMessage(msg);
+    }
 
-            return (--current.duration > -10);
-        });
+    function changeVMin(deltaVMin = 0) {
 
-        ctx.restore();
+        deltaVMin = clamp(settings.vMin + deltaVMin, .3, 10) - settings.vMin;
+
+        if (deltaVMin === 0) return;
+
+        settings.vMin += deltaVMin;
+
+        for (let i = 0; i < settings.numPoints; ++i) {
+            let curr = points[i];
+            curr.vx = Math.max(settings.vMin, curr.vx);
+            curr.vy = Math.max(settings.vMin, curr.vy);
+        }
+
+        flashMessage(`${deltaVMin > 0 ? "increased" : "decreased"} minimum speed to ${settings.vMin}`);
+    }
+
+    function changeVMax(deltaVMax = 0) {
+
+        deltaVMax = clamp(settings.vMax + deltaVMax, 3, 30) - settings.vMax;
+
+        if (deltaVMax === 0) return;
+
+        settings.vMax += deltaVMax;
+
+        for (let i = 0; i < settings.numPoints; ++i) {
+            let curr = points[i];
+            curr.vx = Math.min(settings.vMax, curr.vx);
+            curr.vy = Math.min(settings.vMax, curr.vy);
+        }
+
+        flashMessage(`${deltaVMax > 0 ? "increased" : "decreased"} maximum speed to ${settings.vMax}`);
+    }
+
+    function changeVChange(deltaVChange = 0) {
+        if (deltaVChange === 0) return;
+
+        settings.vChange += clamp(settings.vChange + deltaVChange, 0, 5) - deltaVChange;
     }
 
     function keyDownHandler(e) {
 
-        switch (e.key) {
-            case "+":
-                if (settings.numPoints < 100) {
-                    points.splice(points.length - 1, 0, createPoint());
-                    ++settings.numPoints;
-                    flashMessage(`point added (now ${settings.numPoints})`);
-                }
-                break;
+        const key = e.key.length > 1 ? e.key : e.key.toUpperCase(),
+            modifier = e.ctrlKey ? "control" : e.shiftKey ? "shift" : e.metaKey ? "meta" : e.altKey ? "alt" : "unmodified",
+            handlerMap = keyMap[modifier],
+            handler = handlerMap[key];
 
-            case "-":
-                if (settings.numPoints > 2) {
-                    points.splice(points.length - 2, 1);
-                    --settings.numPoints;
-                    flashMessage(`point removed (${settings.numPoints} remain)`);
-                }
-                break;
-
-            case "*":
-                if (setFadeSpeed(settings.fadeSpeed + 0.01)) {
-                    flashMessage(`increased fade speed to ${Math.round(settings.fadeSpeed * 1000) / 10}`);
-                }
-                break;
-
-            case "/":
-                if (setFadeSpeed(settings.fadeSpeed - 0.01)) {
-                    flashMessage(`decreased fade speed to ${Math.round(settings.fadeSpeed * 1000) / 10}`);
-                }
-                break;
-
-            case "PageUp":
-                if (setSkipFrames(settings.skipFrames + 1)) {
-                    flashMessage(`increased skip frames to ${settings.skipFrames}`);
-                }
-                break;
-
-            case "PageDown":
-                if (setSkipFrames(settings.skipFrames - 1)) {
-                    flashMessage(`decreased skip frames to ${settings.skipFrames}`);
-                }
-                break;
-
-            case "ArrowUp":
-                if (settings.vMin < 10) {
-                    settings.vMin += 0.2;
-                    settings.vMax += 0.2;
-                    flashMessage(`increased speed to [${settings.vMin}, ${settings.vMax}]`);
-                }
-                break;
-
-            case "ArrowDown":
-                if (settings.vMin >= .3) {
-                    settings.vMin -= 0.2;
-                    settings.vMax -= 0.2;
-                    flashMessage(`decreased speed to [${settings.vMin}, ${settings.vMax}]`);
-                }
-                break;
-
-            case "ArrowLeft":
-                if (settings.vChange > 0) {
-                    settings.vChange = Math.max(settings.vChange - 0.1, 0);
-                    flashMessage(`decreased speed change to ${settings.vChange}`);
-                }
-                break;
-
-            case "ArrowRight":
-                if (settings.vChange < 2) {
-                    settings.vChange = Math.min(settings.vChange + 0.1, 2);
-                    flashMessage(`increased speed change to ${vChange}`);
-                }
-                break;
-
-            case "s":
-            case "S":
-                saveSettings();
-                break;
-
-            case "l":
-            case "L":
-                loadSettings();
-                break;
-
-            case "d":
-            case "D":
-                loadDefaultSettings();
-                break;
-
-            case " ":
-                if (animation) {
-                    cancelAnimationFrame(animation);
-                    animation = 0;
-                } else {
-                    animation = requestAnimationFrame(animationStep);
-                }
-                break;
-
-            default:
-                flashMessage("unknown key", settings.messageDuration / 2);
-                console.log(e.code, `"${e.key}"`);
-                return;
+        if (handlerMap.hasOwnProperty(key) && typeof handler === 'function') {
+            e.preventDefault();
+            handler();
+        } else {
+            flashMessage("unknown key", settings.messageDuration / 2);
+            console.log(e.code, `"${e.key}"`);
         }
-
-        e.preventDefault();
     }
 
     function createPoint() {
@@ -308,55 +322,18 @@
         return `hsla(${Math.round(h)},${Math.round(s)}%,${Math.round(l)}%,1)`;
     }
 
-    function movePoints() {
-        let { numPoints, stepSize } = settings;
-
-        for (let i = 0; i < numPoints; ++i) {
-            let current = points[i];
-
-            current.x += current.vx * stepSize;
-            current.y += current.vy * stepSize;
-
-            if (current.x <= 0) {
-                current.x = 0;
-                current.vx *= -1;
-                changeSpeed(current);
-            }
-
-            if (current.x >= w) {
-                current.x = w;
-                current.vx *= -1;
-                changeSpeed(current);
-            }
-
-            if (current.y <= 0) {
-                current.y = 0;
-                current.vy *= -1;
-                changeSpeed(current);
-            }
-
-            if (current.y >= h) {
-                current.y = h;
-                current.vy *= -1;
-                changeSpeed(current);
-            }
-        }
-    }
-
     function changeSpeed(point) {
-        const { vChange, vMin, vMax } = settings;
-
-        let { vx, vy } = point,
-            v = Math.sqrt(vx * vx + vy * vy), // magnitude of velocity
+        const { vChange, vMin, vMax } = settings,
+            { vx, vy } = point,
+            v = Math.sqrt(vx * vx + vy * vy), // magnitude of velocity;
             rawAngle = Math.acos(vx / v), // angle between (1, 0) and velocity
-            angle,
-            q = 0,
-            rMin, rMax,
             pi = Math.PI,
             pi2 = Math.PI / 2;
 
+        let angle, rMin, rMax, q = 0;
+
         // determine the quadrant of rawAngle (acos in ambiguous)
-        // origin is top left (I think)
+        // origin is top left
         if (vy > 0) {
             angle = 2 * pi - rawAngle;
             q = vx > 0 ? 4 : 3;
@@ -409,6 +386,41 @@
         point.vy = scale * (vy * cosR - vx * sinR);
     }
 
+    function movePoints() {
+        let { numPoints, stepSize } = settings;
+
+        for (let i = 0; i < numPoints; ++i) {
+            let current = points[i];
+
+            current.x += current.vx * stepSize;
+            current.y += current.vy * stepSize;
+
+            if (current.x <= 0) {
+                current.x = 0;
+                current.vx *= -1;
+                changeSpeed(current);
+            }
+
+            if (current.x >= w) {
+                current.x = w;
+                current.vx *= -1;
+                changeSpeed(current);
+            }
+
+            if (current.y <= 0) {
+                current.y = 0;
+                current.vy *= -1;
+                changeSpeed(current);
+            }
+
+            if (current.y >= h) {
+                current.y = h;
+                current.vy *= -1;
+                changeSpeed(current);
+            }
+        }
+    }
+
     function paintPoints() {
         const { numPoints } = settings,
             colors = points.map(stepAndGetColor);
@@ -429,6 +441,36 @@
         }
     }
 
+    function paintMessages() {
+        let { messageColor, messageFont } = settings;
+
+        ctx.save();
+
+        ctx.fillStyle = messageColor;
+        ctx.font = messageFont;
+
+        messages = messages.filter(current => {
+            const { text, position, duration } = current;
+
+            if (duration > 0) {
+                ctx.fillText(text, position.x, position.y);
+            }
+
+            return (--current.duration > -10);
+        });
+
+        ctx.restore();
+    }
+
+    function togglePauseAnimation() {
+        if (animation) {
+            cancelAnimationFrame(animation);
+            animation = 0;
+        } else {
+            animation = requestAnimationFrame(animationStep);
+        }
+    }
+
     function animationStep() {
         animation = requestAnimationFrame(animationStep);
 
@@ -437,7 +479,6 @@
 
         if (++skipCounter > settings.skipFrames) {
             skipCounter = 0;
-
             paintPoints();
         }
 
