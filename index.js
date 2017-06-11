@@ -1,12 +1,19 @@
-﻿(function () {
+﻿/* 
+    this will only work in recent browsers.
+*/
+(function () {
     'use strict';
 
+    // localstorage key for storing settings
     const storageKey = "lines";
 
+    // key bindings. 
+    // single letters must be in uppercase,
+    // but will work upper or lowercase.
     const keyMap = {
 
         unmodified: {
-            "H": help,
+            "H": showMappedKeys,
             "+": () => changeNumberOfPoints(+1),
             "-": () => changeNumberOfPoints(-1),
             "*": () => changeFadeSpeed(+0.01),
@@ -20,7 +27,7 @@
             "S": saveSettings,
             "L": loadSettings,
             "D": loadDefaultSettings,
-            " ": togglePauseAnimation,
+            " ": togglePlayPause,
             "1": () => loadSettings("1"),
             "2": () => loadSettings("2"),
             "3": () => loadSettings("3"),
@@ -46,11 +53,11 @@
             "0": () => saveSettings("0"),
         },
 
-        shift: {},
         alt: {},
         meta: {}
     }
 
+    // default settings. loaded on startup.
     const defaultSettings = {
         // animation speed settings
         skipFrames: 4,   // animate only ever (n+1)th frame
@@ -70,6 +77,7 @@
 
         messagePos: { x: 20, y: 40 }, // start position for messages
         messageHeight: 30,            // message line height
+        messageWidth: 200,            // message column width
         messageFont: "20px Serif",    // message font
         messageColor: "#AAA",         // message color
         messageDuration: 50           // message default diplay time (animation steps)
@@ -78,19 +86,22 @@
     const canvas = document.getElementById("content"),
         ctx = canvas.getContext("2d");
 
+    // application state
     let w, h,
         skipCounter = 0,
         points = [],
         messages = [],
-        animation,
+        play = false,
         settings;
 
     function loadDefaultSettings() {
         flashMessage("restoring default settings");
         settings = Object.assign({}, defaultSettings);
+        points = createPointsArray(settings.numPoints);
         changeFadeSpeed();
     }
 
+    // load saved settings from localstorage
     function loadSettings(key = "default") {
 
         const s = localStorage.getItem(`${storageKey}_${key}`);
@@ -108,11 +119,13 @@
         changeFadeSpeed();
     }
 
+    // save settings to localstorage
     function saveSettings(key = "default") {
         localStorage.setItem(`${storageKey}_${key}`, JSON.stringify(settings));
         flashMessage(`saved settings to localStorage (slot ${key})`);
     }
 
+    // get everything started
     function init() {
         updateCanvas();
         loadDefaultSettings();
@@ -121,10 +134,14 @@
 
         window.addEventListener("resize", updateCanvas);
         window.addEventListener("keydown", keyDownHandler);
+        window.addEventListener("click", clickHandler);
 
-        animation = requestAnimationFrame(animationStep);
+        togglePlayPause();
+
+        flashMessage("try pressing \"h\"...", 500);
     }
 
+    // update the internal state when the canvas is first used or resized
     function updateCanvas() {
         w = canvas.width = canvas.clientWidth;
         h = canvas.height = canvas.clientHeight;
@@ -135,17 +152,24 @@
         changeFadeSpeed();
     }
 
+    function clearMessages() {
+        messages = [];
+    }
+
+    // display a fading message on screen
     function flashMessage(text, duration) {
         if (!settings) return;
 
         const last = messages[messages.length - 1],
-            { messagePos, messageDuration, messageHeight } = settings,
-            newY = last && last.position && last.position.y && last.position.y + messageHeight;
+            { messagePos, messageDuration, messageHeight, messageWidth } = settings,
+            lastX = last && last.position.x || messagePos.x,
+            lastY = last && last.position.y || (messagePos.y - messageHeight),
+            wrap = (lastY + messageHeight) > h;
 
         const position = {
-            x: messagePos.x,
-            y: (newY && newY < h) ? newY : messagePos.y
-        }
+            x: wrap ? (lastX + messageWidth) : lastX,
+            y: wrap ? messagePos.y : (lastY + messageHeight)
+        };
 
         messages.push({
             text,
@@ -154,11 +178,18 @@
         });
     }
 
-    function help() {
-        messages = [];
+    // display the mapped keys as a message on screen
+    function showMappedKeys() {
+        clearMessages();
+
         Object.keys(keyMap)
             .forEach(mod => {
-                Object.keys(keyMap[mod]).forEach(key => flashMessage(`${(mod === 'unmodified' ? "" : mod + " + ").padStart(10)}${key}`, 200));
+                Object.keys(keyMap[mod])
+                    .forEach(key => {
+                        const prefix = (mod === 'unmodified' ? "" : mod + " + "),
+                            keyString = key === " " ? "Space" : key;
+                        flashMessage(`${prefix}${keyString}`, 200)
+                    });
             });
     }
 
@@ -262,12 +293,26 @@
         settings.vChange += clamp(settings.vChange + deltaVChange, 0, 5) - deltaVChange;
     }
 
+    function clickHandler(e) {
+        const { altKey, ctrlKey, metaKey, shiftKey, button, which } = e;
+
+        if (altKey || ctrlKey || metaKey || shiftKey) return;
+
+        if (button === 0 || which === 1) {
+            togglePlayPause();
+        }
+    }
+
     function keyDownHandler(e) {
 
         const key = e.key.length > 1 ? e.key : e.key.toUpperCase(),
-            modifier = e.ctrlKey ? "control" : e.shiftKey ? "shift" : e.metaKey ? "meta" : e.altKey ? "alt" : "unmodified",
+            modifier = e.ctrlKey ? "control" : e.metaKey ? "meta" : e.altKey ? "alt" : "unmodified",
             handlerMap = keyMap[modifier],
             handler = handlerMap[key];
+
+        if (key === "Alt" || key === "Control" || key === "Meta" || key === "Shift") {
+            return;
+        }
 
         if (handlerMap.hasOwnProperty(key) && typeof handler === 'function') {
             e.preventDefault();
@@ -278,20 +323,28 @@
         }
     }
 
+    function direction() {
+        return Math.sign(Math.random() - 0.5);
+    }
+
+    function random(min = 0, max = 1) {
+        return min + Math.random() * (max - min)
+    }
+
     function createPoint() {
         let { vMin, vMax, sMin, sMax, lMin, lMax } = settings,
             p = Object.create(null);
 
-        p.x = Math.random() * w;
-        p.y = Math.random() * h;
-        p.vx = vMin + Math.random() * (vMax - vMin);
-        p.vy = vMin + Math.random() * (vMax - vMin);
-        p.h = Math.random() * 360;
-        p.s = Math.random() * (sMax - sMin) + sMin;
-        p.l = Math.random() * (lMax - lMin) + lMin;
-        p.h_dir = Math.sign(Math.random() - 0.5);
-        p.s_dir = Math.sign(Math.random() - 0.5);
-        p.l_dir = Math.sign(Math.random() - 0.5);
+        p.x = random(0, w);
+        p.y = random(0, h);
+        p.vx = random(vMin, vMax) * direction();
+        p.vy = random(vMin, vMax) * direction();
+        p.h = random(0, 360);
+        p.s = random(sMin, sMax);
+        p.l = random(lMin, lMax);
+        p.h_dir = direction();
+        p.s_dir = direction();
+        p.l_dir = direction();
 
         return p;
     }
@@ -304,9 +357,9 @@
         const { colorSpeed, sMin, sMax, lMin, lMax } = settings;
         let { h, s, l, h_dir, s_dir, l_dir } = point;
 
-        h = clamp(h + h_dir * Math.random() * colorSpeed, 0, 360);
-        s = clamp(s + s_dir * Math.random() * colorSpeed, sMin, sMax);
-        l = clamp(l + l_dir * Math.random() * colorSpeed, lMin, lMax);
+        h = clamp(h + h_dir * random(0, colorSpeed) , 0, 360);
+        s = clamp(s + s_dir * random(0, colorSpeed), sMin, sMax);
+        l = clamp(l + l_dir * random(0, colorSpeed), lMin, lMax);
 
         h_dir = h <= 0 ? 1 : h >= 360 ? -1 : h_dir;
         s_dir = s <= sMin ? 1 : s >= sMax ? -1 : s_dir;
@@ -371,12 +424,12 @@
 
         // randomly select scale
         // randomly change angle so that it stays in the same quadrant
-        let scale = 1 + (Math.random() * vChange),
-            rotation = Math.random() * pi2 + rMin,
+        let scale = 1 + random(0, vChange),
+            rotation = random(0, pi2) + rMin,
             cosR = Math.cos(rotation),
             sinR = Math.sin(rotation);
 
-        if (Math.random() > 0.5) scale = 1 / scale;
+        if (random() > 0.5) scale = 1 / scale;
 
         // restrict scale so that resulting speed stays inside limits
         scale = Math.sqrt(clamp(v * scale, vMin, vMax) / v);
@@ -462,17 +515,21 @@
         ctx.restore();
     }
 
-    function togglePauseAnimation() {
-        if (animation) {
-            cancelAnimationFrame(animation);
-            animation = 0;
+    function togglePlayPause() {
+        play = !play;
+
+        if (play) {
+            requestAnimationFrame(animationStep);
         } else {
-            animation = requestAnimationFrame(animationStep);
+            clearMessages();
+            flashMessage("Paused", 1);
         }
     }
 
     function animationStep() {
-        animation = requestAnimationFrame(animationStep);
+        if (play) {
+            requestAnimationFrame(animationStep);
+        }
 
         movePoints();
         ctx.fillRect(0, 0, w, h);
